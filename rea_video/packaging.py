@@ -1505,9 +1505,15 @@ def _ts(t: float, sep: str = ",") -> str:
     return f"{h:02d}:{m:02d}:{s:02d}{sep}{ms:03d}"
 
 
+def _rows(c: dict) -> list[str]:
+    """The lines of a cue's text. "/" joins the lines of a block (_blocks); a cue read as one line has no joins,
+    so a "/" in it is part of the text (24/7, 2026/11/23, km/h)."""
+    return [c["text"]] if c.get("n_lines") == 1 else c["text"].split("/")
+
+
 def to_srt(cues: list[dict], kinds=("subtitle",)) -> str:
     rows = [c for c in sorted(cues, key=lambda c: c["t0"]) if c["kind"] in kinds]
-    return "\n".join(f"{i}\n{_ts(c['t0'])} --> {_ts(c['t1'])}\n{c['text'].replace('/', chr(10))}\n" for i, c in enumerate(rows, 1))
+    return "\n".join(f"{i}\n{_ts(c['t0'])} --> {_ts(c['t1'])}\n{chr(10).join(_rows(c))}\n" for i, c in enumerate(rows, 1))
 
 
 def _ass_color(hexrgb: str | None, default: str) -> str:
@@ -1619,7 +1625,7 @@ def to_ass(cues: list[dict], width: int, height: int) -> str:
     for c in settle_cues([c for c in cues if c["kind"] != "scene" and c.get("bbox")]):
         st = c.get("style") or {}
         x, y, w, h = c["bbox"]
-        rows = c["text"].split("/")
+        rows = _rows(c)
         # a narrow tall box is a vertical column of characters; otherwise the text must fit the measured box width
         vertical = len(rows) == 1 and len(_norm(rows[0])) > 1 and h * height > 2 * w * width
         size = c["line_h"] * height * 0.95
@@ -1643,7 +1649,9 @@ def to_ass(cues: list[dict], width: int, height: int) -> str:
             tags += "\\fad(200,200)"
         # OCR text is literal: "{...}" would be read as override tags and "\\" as an escape
         text = c["text"].replace("\r\n", "\n").replace("\r", "\n").replace("\\", "＼").replace("{", "｛").replace("}", "｝")
-        text = "\\N".join(text.replace("\n", "")) if vertical else text.replace("\n", "\\N").replace("/", "\\N")
+        text = "\\N".join(text.replace("\n", "")) if vertical else text.replace("\n", "\\N")
+        if len(rows) > 1:
+            text = text.replace("/", "\\N")
         events.append(f"Dialogue: {0 if c['kind'] == 'subtitle' else 1},{_ts(c['t0'], '.')[1:-1]},{_ts(c['t1'], '.')[1:-1]},{name},,0,0,0,,{{{tags}}}{text}")
     return "\n".join(head + list(styles.values()) + ["", "[Events]",
                      "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"] + events) + "\n"

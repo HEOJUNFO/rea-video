@@ -543,7 +543,9 @@ def shots_from_cuts(track: FrameTrack, detected: list[Shot], cuts: list[dict], m
         if c:
             old = by_frame.get(f)
             kind = c.get("kind") or "cut"
-            if old is not None and kind in ("cut", "effect"):
+            # the detector's own boundary (a cut, or the dissolve / fade / wipe it measured) keeps what it measured;
+            # only a kind the survey named for it replaces that
+            if old is not None and (kind in ("cut", "effect") or c.get("by") == "tool" or kind == old.transition_in):
                 trans, score, tdict = old.transition_in, old.boundary_score, dict(old.transition)
             else:
                 trans, score = kind, float(c.get("p") or 0.5)

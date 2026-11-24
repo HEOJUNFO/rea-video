@@ -170,6 +170,7 @@ class VLMClient:
         self.media = cfg.media
         self.cache_dir = cache_dir
         self.dead_requests = 0
+        self.dead_reason = ""  # what the last of those requests failed with: a skipped call reports it
         self.models = list(cfg.models)  # reordered: the last model that answered goes first
         self.video_part = cfg.video_part if cfg.video_part in ("image_url", "video_url") else "image_url"
         self._part_settled = cfg.video_part in ("image_url", "video_url")  # set by the user, or learned from an answer / a second refusal
@@ -227,7 +228,8 @@ class VLMClient:
             except (OSError, ValueError):
                 pass  # a half-written file from an interrupted run: ask again
         if self.gave_up:
-            raise RuntimeError("VLM skipped: service failed on every model for earlier requests")
+            # the reason goes first: callers keep the head of the message, and "skipped" alone hides a bad key or a 500
+            raise RuntimeError(f"{self.dead_reason} (VLM skipped: earlier requests failed on every model)")
         has_video = any(mime.startswith("video/") for _, mime in media)
         part = self.video_part
         swapped = False
@@ -298,6 +300,7 @@ class VLMClient:
                     time.sleep(1.5)
         if not refused and not isinstance(last, (ValueError, KeyError)):  # transport/server errors, not a bad answer
             with self._lock:
+                self.dead_reason = str(last)
                 self.dead_requests += 1
         raise RuntimeError(f"all VLM models failed: {last}")
 

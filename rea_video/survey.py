@@ -1022,6 +1022,17 @@ def build_timeline(track: FrameTrack, shots: list[Shot], found: dict, meta: dict
         # (whip, dissolve, ...) where the transition starts is the same change, seen from its first frame
         at_edge = [c for c in cuts if c not in inside and c["span"][0] - edge <= t <= c["span"][1] + edge and c["span"][1] > c["span"][0]
                    and not (s.transition_in not in (None, "cut", "start", "flash") and t <= c["span"][0] + edge)]
+        # hard cuts the survey called inside a gradual transition the detector measured (a dissolve, a fade, a wipe)
+        # are that transition, seen on small tiles: one boundary, at the detector's frame, with its kind and span
+        tr = s.transition if s.transition_in not in (None, "start", "cut", "jump", "flash") else {}
+        if tr and "start_frame" in tr and "end_frame" in tr:
+            a, z = _t(track, int(tr["start_frame"])), _t(track, int(tr["end_frame"]))
+            own = [c for c in cuts if c["by"] == "survey" and c["span"][1] - c["span"][0] <= 2 * edge and a - edge <= c["t"] <= z + edge]
+            if own:
+                own[0].update(frame=s.start_frame, t=round(t, 3), kind=s.transition_in, span=[round(a, 3), round(z, 3)], by="survey+tool")
+                own[0].pop("unsure", None)
+                cuts[:] = [c for c in cuts if not any(c is o for o in own[1:])]
+                continue
         # "near" is asked of the survey's changes only: another detector cut close by is a cut of its own (the detector
         # keeps clean cuts 0.12 s apart)
         if inside or (not at_edge and any(c["span"][0] - near <= t <= c["span"][1] + near for c in cuts if c["by"] != "tool")):
